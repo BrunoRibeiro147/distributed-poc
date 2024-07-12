@@ -1,0 +1,51 @@
+defmodule DistributedPoc.BalanceProcess do
+  use GenServer
+
+  alias DistributedPoc.CompanySubject
+  alias DistributedPoc.Repo
+
+  @impl true
+  def init(%{}) do
+    queue = :queue.new()
+
+    {:ok, %{queue: queue}}
+  end
+
+  @impl true
+  def handle_cast({:add_to_queue, message}, state) do
+    case :queue.is_empty(state.queue) do
+      true ->
+        new_state = add_to_queue(message, state)
+        send(self(), :consume_queue)
+        {:noreply, new_state}
+
+      false ->
+        new_state = add_to_queue(message, state)
+        {:noreply, new_state}
+    end
+  end
+
+  @impl true
+  def handle_info(:consume_queue, state) do
+    case :queue.out(state.queue) do
+      {{:value, message}, new_queue} ->
+        process_message(message)
+        send(self(), :consume_queue)
+        {:noreply, Map.put(state, :queue, new_queue)}
+
+      {{:empty}, _queue} ->
+        new_queue = :queue.new()
+        {:noreply, Map.put(state, :queue, new_queue)}
+    end
+  end
+
+  defp add_to_queue(message, state) do
+    new_queue = :queue.in(message, state.queue)
+
+    Map.put(state, :queue, new_queue)
+  end
+
+  defp process_message(message) do
+    company_subject = Repo.get(CompanySubject, message.subject_id)
+  end
+end
